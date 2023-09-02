@@ -1,0 +1,11 @@
+[package]
+name = "kjlox"
+version = "0.1.0"
+edition = "2021"
+description = "Implementing the lox language from Crafting Interpreters by Robert Nystrom"
+repository = "https://github.com/dlkj/kjlox"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
