@@ -4,38 +4,72 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::missing_panics_doc)]
 
-use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{self, Read, Write};
 
-#[derive(Debug, Clone, Copy)]
-pub struct RunError;
+use scanning::Scanner;
 
-impl Display for RunError {
+mod scanning;
+
+#[derive(Debug)]
+pub enum Error {
+    Run {
+        line: usize,
+        location: String,
+        message: String,
+    },
+    Io(std::io::Error),
+}
+
+impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "kjlox run error")
+        match self {
+            Self::Run {
+                line,
+                location,
+                message,
+            } => write!(f, "[line {line}] Error{location}: {message}"),
+            Self::Io(e) => write!(f, "IO Error: {e}"),
+        }
     }
 }
 
-impl Error for RunError {}
+impl std::error::Error for Error {}
 
-pub fn run_file(path: &str) -> Result<(), RunError> {
-    let mut file = File::open(path).unwrap();
+impl Error {
+    #[must_use]
+    pub fn run(line: usize, location: String, message: String) -> Self {
+        Self::Run {
+            line,
+            location,
+            message,
+        }
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value)
+    }
+}
+
+pub fn run_file(path: &str) -> Result<(), Error> {
+    let mut file = File::open(path)?;
     let mut file_content = String::new();
-    file.read_to_string(&mut file_content).unwrap();
+    file.read_to_string(&mut file_content)?;
     run(&file_content)
 }
 
-pub fn run_prompt() -> Result<(), RunError> {
+pub fn run_prompt() -> Result<(), Error> {
     let stdin = io::stdin();
     loop {
         print!("> ");
         // flush required to ensure prompt is show immediately
-        io::stdout().flush().unwrap();
+        io::stdout().flush()?;
 
         let mut buffer = String::new();
-        stdin.read_line(&mut buffer).unwrap();
+        stdin.read_line(&mut buffer)?;
 
         // stop repl if the line is empty or contains ctrl-d
         if buffer.is_empty() || buffer.contains('\u{4}') {
@@ -45,8 +79,8 @@ pub fn run_prompt() -> Result<(), RunError> {
     }
 }
 
-fn run(source: &str) -> Result<(), RunError> {
-    let scanner = Scanner::new(source);
+fn run(source: &str) -> Result<(), Error> {
+    let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens();
 
     for token in tokens {
@@ -54,18 +88,4 @@ fn run(source: &str) -> Result<(), RunError> {
     }
 
     Ok(())
-}
-
-struct Scanner<'a> {
-    source: &'a str,
-}
-
-impl<'a> Scanner<'a> {
-    fn new(source: &'a str) -> Self {
-        Self { source }
-    }
-
-    fn scan_tokens(&self) -> Vec<String> {
-        vec![self.source.into()]
-    }
 }

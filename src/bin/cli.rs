@@ -8,11 +8,17 @@ fn main() -> ExitCode {
     match (args.nth(1), args.next()) {
         (None, _) => match run_prompt() {
             Ok(_) => ExitCode::SUCCESS,
-            Err(_) => ExitCode::FAILURE,
+            Err(e) => {
+                println!("{e}");
+                ExitCode::FAILURE
+            }
         },
         (Some(path), None) => match run_file(&path) {
             Ok(_) => ExitCode::SUCCESS,
-            Err(_) => ExitCode::FAILURE,
+            Err(e) => {
+                println!("{e}");
+                ExitCode::FAILURE
+            }
         },
         _ => {
             println!("Usage: kjlox [script]");
