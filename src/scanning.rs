@@ -224,8 +224,8 @@ impl Scanner {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
-    kind: TokenKind,
-    line: usize,
+    pub kind: TokenKind,
+    pub line: usize,
 }
 
 impl Display for Token {

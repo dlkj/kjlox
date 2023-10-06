@@ -10,6 +10,7 @@ use std::io::{self, Read, Write};
 
 use scanning::Scanner;
 
+mod expr;
 mod scanning;
 
 #[derive(Debug)]
