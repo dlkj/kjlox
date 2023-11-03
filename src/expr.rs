@@ -1,14 +1,17 @@
 use crate::scanning::Token;
 
 #[derive(Debug, PartialEq)]
-enum Expr {
+pub enum Expr {
     Binary {
         left: Box<Expr>,
         right: Box<Expr>,
         op: Token,
     },
     Grouping(Box<Expr>),
-    NumberLiteral(f64),
+    LiteralNumber(f64),
+    LiteralBoolean(bool),
+    LiteralString(String),
+    LiteralNil,
     Unary {
         right: Box<Expr>,
         op: Token,
@@ -20,13 +23,16 @@ impl std::fmt::Display for Expr {
         match self {
             Self::Binary { left, right, op } => write!(f, "({op} {} {})", &left, &right),
             Self::Grouping(e) => write!(f, "(group {})", &e),
-            Self::NumberLiteral(value) => write!(f, "{value}"),
+            Self::LiteralString(value) => write!(f, "\"{value}\""),
+            Self::LiteralNumber(value) => write!(f, "{value}"),
+            Self::LiteralBoolean(value) => write!(f, "{value}"),
             Self::Unary { right, op } => write!(f, "({op} {})", &right),
+            Self::LiteralNil => write!(f, "nil"),
         }
     }
 }
 impl Expr {
-    fn new_binary(left: Self, op: Token, right: Self) -> Self {
+    pub fn new_binary(left: Self, op: Token, right: Self) -> Self {
         Self::Binary {
             left: Box::new(left),
             right: Box::new(right),
@@ -34,15 +40,27 @@ impl Expr {
         }
     }
 
-    fn new_number_literal(value: f64) -> Self {
-        Self::NumberLiteral(value)
+    pub fn new_literal_number(value: f64) -> Self {
+        Self::LiteralNumber(value)
     }
 
-    fn new_grouping(expr: Self) -> Self {
+    pub fn new_literal_string(value: String) -> Self {
+        Self::LiteralString(value)
+    }
+
+    pub fn new_literal_boolean(value: bool) -> Self {
+        Self::LiteralBoolean(value)
+    }
+
+    pub fn new_literal_nil() -> Self {
+        Self::LiteralNil
+    }
+
+    pub fn new_grouping(expr: Self) -> Self {
         Self::Grouping(Box::new(expr))
     }
 
-    fn new_unary(op: Token, right: Self) -> Self {
+    pub fn new_unary(op: Token, right: Self) -> Self {
         Self::Unary {
             right: Box::new(right),
             op,
@@ -64,13 +82,13 @@ mod test {
                     kind: TokenKind::Minus,
                     line: 1,
                 },
-                Expr::new_number_literal(123.0),
+                Expr::new_literal_number(123.0),
             ),
             Token {
                 kind: TokenKind::Star,
                 line: 1,
             },
-            Expr::new_grouping(Expr::new_number_literal(45.67)),
+            Expr::new_grouping(Expr::new_literal_number(45.67)),
         );
 
         assert_eq!(

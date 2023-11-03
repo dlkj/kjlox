@@ -8,9 +8,11 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::{self, Read, Write};
 
+use parser::Parser;
 use scanning::Scanner;
 
 mod expr;
+mod parser;
 mod scanning;
 
 #[derive(Debug)]
@@ -59,7 +61,8 @@ pub fn run_file(path: &str) -> Result<(), Error> {
     let mut file = File::open(path)?;
     let mut file_content = String::new();
     file.read_to_string(&mut file_content)?;
-    run(&file_content)
+    run(&file_content);
+    Ok(())
 }
 
 pub fn run_prompt() -> Result<(), Error> {
@@ -76,17 +79,18 @@ pub fn run_prompt() -> Result<(), Error> {
         if buffer.is_empty() || buffer.contains('\u{4}') {
             return Ok(());
         }
-        run(&buffer)?;
+        run(&buffer);
     }
 }
 
-fn run(source: &str) -> Result<(), Error> {
+fn run(source: &str) {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens();
+    let mut parser = Parser::new(tokens);
 
-    for token in tokens {
-        println!("{token}");
+    let expr = parser.parse();
+
+    if let Some(expr) = expr {
+        println!("{expr}");
     }
-
-    Ok(())
 }
