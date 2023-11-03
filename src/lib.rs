@@ -8,10 +8,12 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::{self, Read, Write};
 
+use interpreter::Interpreter;
 use parser::Parser;
 use scanning::Scanner;
 
 mod expr;
+mod interpreter;
 mod parser;
 mod scanning;
 
@@ -90,7 +92,12 @@ fn run(source: &str) {
 
     let expr = parser.parse();
 
-    if let Some(expr) = expr {
-        println!("{expr}");
-    }
+    let Some(expr) = expr else { return };
+
+    let mut interpreter = Interpreter {};
+    let value = interpreter.interpret(&expr);
+
+    let Ok(value) = value else { return };
+
+    print!("{value}");
 }

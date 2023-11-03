@@ -119,7 +119,7 @@ impl Parser {
 
             TokenKind::LeftParen => {
                 let expr = self.expression()?;
-                self.consume(TokenKind::RightParen, "Expect ')' after expression.")?;
+                self.consume(&TokenKind::RightParen, "Expect ')' after expression.")?;
                 Ok(Expr::new_grouping(expr))
             }
 
@@ -151,8 +151,8 @@ impl Parser {
         }
     }
 
-    fn consume(&mut self, value: TokenKind, msg: &str) -> Result<(), ParseError> {
-        if self.check(&value) {
+    fn consume(&mut self, value: &TokenKind, msg: &str) -> Result<(), ParseError> {
+        if self.check(value) {
             self.advance();
             Ok(())
         } else {
@@ -161,7 +161,7 @@ impl Parser {
     }
 
     fn match_tokens(&mut self, tokens: &[TokenKind]) -> bool {
-        for t in tokens.iter() {
+        for t in tokens {
             if self.check(t) {
                 self.advance();
                 return true;
