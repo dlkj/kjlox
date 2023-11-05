@@ -307,7 +307,7 @@ impl Display for TokenKind {
             Self::GreaterEqual => write!(f, "GreaterEqual"),
             Self::Less => write!(f, "Less"),
             Self::LessEqual => write!(f, "LessEqual"),
-            Self::Identifier(s) => write!(f, "Identifier{s}"),
+            Self::Identifier(s) => write!(f, "Identifier({s})"),
             Self::String(s) => write!(f, "String({s})"),
             Self::Number(n) => write!(f, "Number({n})"),
             Self::And => write!(f, "And"),

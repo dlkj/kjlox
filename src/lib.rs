@@ -97,7 +97,13 @@ fn run(source: &str) {
     let mut interpreter = Interpreter {};
     let value = interpreter.interpret(&expr);
 
-    let Ok(value) = value else { return };
+    let value = match value {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("{e}");
+            return;
+        }
+    };
 
-    print!("{value}");
+    println!("{value}");
 }
