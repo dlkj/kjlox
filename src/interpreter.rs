@@ -8,14 +8,15 @@ use crate::{
     scanning::{Token, TokenKind},
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Interpreter {
     environment: Environment,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Environment {
     values: HashMap<String, Value>,
+    enclosing: Option<Box<Environment>>,
 }
 
 impl Environment {
@@ -24,19 +25,31 @@ impl Environment {
     }
 
     pub fn assign(&mut self, name: String, value: Value) -> bool {
-        if let Occupied(mut e) = self.values.entry(name) {
+        if let Occupied(mut e) = self.values.entry(name.clone()) {
             e.insert(value);
             true
+        } else if let Some(enclosing) = self.enclosing.as_mut() {
+            enclosing.assign(name, value)
         } else {
             false
         }
     }
 
     pub fn get(&self, name: &String) -> Result<Value, InterpretError> {
-        self.values
-            .get(name)
-            .cloned()
-            .ok_or(InterpretError(format!("undefined variable {name}")))
+        if let Some(value) = self.values.get(name).cloned() {
+            Ok(value)
+        } else if let Some(enclosing) = self.enclosing.as_ref() {
+            enclosing.get(name)
+        } else {
+            Err(InterpretError(format!("undefined variable {name}")))
+        }
+    }
+
+    pub fn new(e: Self) -> Self {
+        Self {
+            values: HashMap::default(),
+            enclosing: Some(Box::new(e)),
+        }
     }
 }
 
@@ -81,14 +94,35 @@ impl Interpreter {
         match stmt {
             Stmt::Print(p) => Ok(println!("{}", self.evaluate(p)?)),
             Stmt::Expression(s) => self.evaluate(s).map(drop),
-            Stmt::Var(n, e) => {
+            Stmt::Var(name, e) => {
                 let value = e
                     .as_ref()
                     .map_or(Ok(Value::Nil), |expr| self.evaluate(expr))?;
-                self.environment.define(n.clone(), value);
+                self.environment.define(name.clone(), value);
                 Ok(())
             }
+            Stmt::Block(statements) => {
+                self.execute_block(statements, Environment::new(self.environment.clone()))
+            }
         }
+    }
+
+    fn execute_block(
+        &mut self,
+        statements: &[Stmt],
+        environment: Environment,
+    ) -> Result<(), InterpretError> {
+        let previous = std::mem::replace(&mut self.environment, environment);
+
+        for s in statements {
+            if let Err(e) = self.execute(s) {
+                self.environment = previous;
+                return Err(e);
+            }
+        }
+
+        self.environment = previous;
+        Ok(())
     }
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Value, InterpretError> {

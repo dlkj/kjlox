@@ -5,6 +5,7 @@ pub enum Stmt {
     Print(Expr),
     Expression(Expr),
     Var(String, Option<Expr>),
+    Block(Vec<Stmt>),
 }
 
 impl std::fmt::Display for Stmt {
@@ -16,6 +17,13 @@ impl std::fmt::Display for Stmt {
                 Some(e) => write!(f, "var {ident} = {e};"),
                 None => write!(f, "var {ident};"),
             },
+            Self::Block(statements) => {
+                writeln!(f, "{{ START BLOCK")?;
+                for s in statements {
+                    writeln!(f, "{s}")?;
+                }
+                write!(f, "}} END BLOCK")
+            }
         }
     }
 }
