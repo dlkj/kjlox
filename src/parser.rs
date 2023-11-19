@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    expr::Expr,
+    expr::{Expr, Stmt},
     scanning::{Token, TokenKind},
 };
 
@@ -11,18 +11,12 @@ pub struct Parser {
 }
 
 #[derive(Debug)]
-pub struct ParseError {
-    message: String,
-}
-impl ParseError {
-    fn new(message: String) -> Self {
-        Self { message }
-    }
-}
+pub struct ParseError(Token, String);
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Parse error: {}", self.message)
+        let Self(token, message) = self;
+        write!(f, "Parse error: L{} {} - {message}", token.line, token.kind)
     }
 }
 
@@ -33,25 +27,99 @@ impl Parser {
         Self { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> Option<Expr> {
-        self.expression()
-            .map_err(|e| {
-                eprintln!("{e}");
-            })
-            .ok()
+    pub fn parse(&mut self) -> Vec<Stmt> {
+        let mut statements = vec![];
+
+        while !self.is_at_end() {
+            match self.declaration() {
+                Ok(s) => statements.push(s),
+                Err(e) => {
+                    eprintln!("{e}");
+                    self.synchronize();
+                }
+            }
+        }
+
+        statements
+    }
+
+    fn declaration(&mut self) -> Result<Stmt, ParseError> {
+        if self.match_tokens(&[TokenKind::Var]) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
+    }
+
+    fn var_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let identifier = self.consume_identifier("expect variable name")?;
+
+        if self.match_tokens(&[TokenKind::Equal]) {
+            let init = self.expression()?;
+            self.consume(
+                &TokenKind::Semicolon,
+                "expect ';' after variable declaration",
+            )?;
+            Ok(Stmt::Var(identifier, Some(init)))
+        } else {
+            self.consume(
+                &TokenKind::Semicolon,
+                "expect ';' after variable declaration",
+            )?;
+            Ok(Stmt::Var(identifier, None))
+        }
+    }
+
+    fn statement(&mut self) -> Result<Stmt, ParseError> {
+        if self.match_tokens(&[TokenKind::Print]) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Result<Stmt, ParseError> {
+        let value = self.expression()?;
+        self.consume(&TokenKind::Semicolon, "expect ';' after expression")?;
+        Ok(Stmt::Print(value))
+    }
+
+    fn expression_statement(&mut self) -> Result<Stmt, ParseError> {
+        let value = self.expression()?;
+        self.consume(&TokenKind::Semicolon, "expect ';' after expression")?;
+        Ok(Stmt::Expression(value))
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr, ParseError> {
+        let expr = self.equality()?;
+
+        if !self.match_tokens(&[TokenKind::Equal]) {
+            return Ok(expr);
+        }
+
+        if let Expr::Identifier(s) = expr {
+            Ok(Expr::Assignment(s, Box::new(self.assignment()?)))
+        } else {
+            Err(ParseError(
+                self.previous(),
+                format!("invalid assignment target {expr}"),
+            ))
+        }
     }
 
     fn equality(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.comparison()?;
 
         while self.match_tokens(&[TokenKind::BangEqual, TokenKind::EqualEqual]) {
-            let op = self.previous();
-            let right = self.comparison()?;
-            expr = Expr::new_binary(expr, op, right);
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                op: self.previous(),
+                right: Box::new(self.comparison()?),
+            };
         }
 
         Ok(expr)
@@ -66,9 +134,13 @@ impl Parser {
             TokenKind::Less,
             TokenKind::LessEqual,
         ]) {
-            let op = self.previous();
-            let right = self.term()?;
-            expr = Expr::new_binary(expr, op, right);
+            expr = {
+                Expr::Binary {
+                    left: Box::new(expr),
+                    op: self.previous(),
+                    right: Box::new(self.term()?),
+                }
+            };
         }
 
         Ok(expr)
@@ -78,9 +150,13 @@ impl Parser {
         let mut expr = self.factor()?;
 
         while self.match_tokens(&[TokenKind::Minus, TokenKind::Plus]) {
-            let op = self.previous();
-            let right = self.factor()?;
-            expr = Expr::new_binary(expr, op, right);
+            expr = {
+                Expr::Binary {
+                    left: Box::new(expr),
+                    op: self.previous(),
+                    right: Box::new(self.factor()?),
+                }
+            };
         }
 
         Ok(expr)
@@ -90,9 +166,13 @@ impl Parser {
         let mut expr = self.unary()?;
 
         while self.match_tokens(&[TokenKind::Slash, TokenKind::Star]) {
-            let op = self.previous();
-            let right = self.unary()?;
-            expr = Expr::new_binary(expr, op, right);
+            expr = {
+                Expr::Binary {
+                    left: Box::new(expr),
+                    op: self.previous(),
+                    right: Box::new(self.unary()?),
+                }
+            };
         }
 
         Ok(expr)
@@ -100,9 +180,13 @@ impl Parser {
 
     fn unary(&mut self) -> Result<Expr, ParseError> {
         if self.match_tokens(&[TokenKind::Bang, TokenKind::Minus]) {
-            let op = self.previous();
-            let right = self.unary()?;
-            return Ok(Expr::new_unary(op, right));
+            let expr = Ok({
+                Expr::Unary {
+                    op: self.previous(),
+                    right: Box::new(self.unary()?),
+                }
+            });
+            return expr;
         }
 
         self.primary()
@@ -111,19 +195,20 @@ impl Parser {
     fn primary(&mut self) -> Result<Expr, ParseError> {
         let token = self.advance();
         match token.kind {
-            TokenKind::True => Ok(Expr::new_literal_boolean(true)),
-            TokenKind::False => Ok(Expr::new_literal_boolean(false)),
-            TokenKind::Nil => Ok(Expr::new_literal_nil()),
-            TokenKind::Number(n) => Ok(Expr::new_literal_number(n)),
-            TokenKind::String(s) => Ok(Expr::new_literal_string(s)),
+            TokenKind::True => Ok(Expr::LiteralBoolean(true)),
+            TokenKind::False => Ok(Expr::LiteralBoolean(false)),
+            TokenKind::Nil => Ok(Expr::LiteralNil),
+            TokenKind::Number(n) => Ok(Expr::LiteralNumber(n)),
+            TokenKind::String(s) => Ok(Expr::LiteralString(s)),
+            TokenKind::Identifier(i) => Ok(Expr::Identifier(i)),
 
             TokenKind::LeftParen => {
                 let expr = self.expression()?;
-                self.consume(&TokenKind::RightParen, "Expect ')' after expression.")?;
-                Ok(Expr::new_grouping(expr))
+                self.consume(&TokenKind::RightParen, "expect ')' after expression.")?;
+                Ok(Expr::Grouping(Box::new(expr)))
             }
 
-            token => Err(ParseError::new(format!("Unexpected token {token}"))),
+            _ => Err(ParseError(token, "unexpected token".to_string())),
         }
     }
 
@@ -156,7 +241,21 @@ impl Parser {
             self.advance();
             Ok(())
         } else {
-            Err(ParseError::new(msg.to_owned()))
+            Err(ParseError(self.peek(), msg.to_owned()))
+        }
+    }
+
+    fn consume_identifier(&mut self, msg: &str) -> Result<String, ParseError> {
+        if self.is_at_end() {
+            return Err(ParseError(self.peek(), msg.to_owned()));
+        }
+
+        match self.peek().kind {
+            TokenKind::Identifier(value) => {
+                self.advance();
+                Ok(value)
+            }
+            _ => Err(ParseError(self.peek(), msg.to_owned())),
         }
     }
 
@@ -174,7 +273,8 @@ impl Parser {
         if self.is_at_end() {
             return false;
         }
-        &self.peek().kind == value
+        // We only care what kind of token it is
+        core::mem::discriminant(&self.peek().kind) == core::mem::discriminant(value)
     }
 
     fn advance(&mut self) -> Token {
@@ -199,9 +299,9 @@ impl Parser {
 
 #[cfg(test)]
 mod test {
-    use crate::{parser::Parser, scanning::Scanner};
+    use crate::{expr::Stmt, parser::Parser, scanning::Scanner};
 
-    fn parse(source: &str) -> Option<crate::expr::Expr> {
+    fn parse(source: &str) -> Vec<Stmt> {
         let mut scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens();
         let mut parser = Parser::new(tokens);
@@ -212,20 +312,20 @@ mod test {
     #[test]
     fn valid_group() {
         assert_eq!(
-            parse("(6 / 3) - 1").unwrap().to_string(),
+            parse("(6 / 3) - 1")[0].to_string(),
             String::from("(Minus (group (Slash 6 3)) 1)")
         );
     }
 
     #[test]
     fn invalid_group() {
-        assert_eq!(parse("(6 / 3 - 1"), None);
+        assert!(parse("(6 / 3 - 1").is_empty());
     }
 
     #[test]
     fn strings() {
         assert_eq!(
-            parse("!(\"foo\" != \"bar\") + nil").unwrap().to_string(),
+            parse("!(\"foo\" != \"bar\") + nil")[0].to_string(),
             String::from("(Plus (Bang (group (BangEqual \"foo\" \"bar\"))) nil)")
         );
     }

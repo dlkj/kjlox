@@ -63,12 +63,13 @@ pub fn run_file(path: &str) -> Result<(), Error> {
     let mut file = File::open(path)?;
     let mut file_content = String::new();
     file.read_to_string(&mut file_content)?;
-    run(&file_content);
+    run(&mut Interpreter::default(), &file_content);
     Ok(())
 }
 
 pub fn run_prompt() -> Result<(), Error> {
     let stdin = io::stdin();
+    let mut interpreter = Interpreter::default();
     loop {
         print!("> ");
         // flush required to ensure prompt is show immediately
@@ -81,29 +82,27 @@ pub fn run_prompt() -> Result<(), Error> {
         if buffer.is_empty() || buffer.contains('\u{4}') {
             return Ok(());
         }
-        run(&buffer);
+        run(&mut interpreter, &buffer);
     }
 }
 
-fn run(source: &str) {
+fn run(interpreter: &mut Interpreter, source: &str) {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens();
     let mut parser = Parser::new(tokens);
 
-    let expr = parser.parse();
+    let stmts = parser.parse();
 
-    let Some(expr) = expr else { return };
+    if stmts.is_empty() {
+        return;
+    };
 
-    let mut interpreter = Interpreter {};
-    let value = interpreter.interpret(&expr);
+    let value = interpreter.interpret(&stmts);
 
-    let value = match value {
+    match value {
         Ok(v) => v,
         Err(e) => {
             eprintln!("{e}");
-            return;
         }
-    };
-
-    println!("{value}");
+    }
 }

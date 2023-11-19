@@ -1,11 +1,44 @@
-use std::fmt::Display;
+use std::{
+    collections::{hash_map::Entry::Occupied, HashMap},
+    fmt::Display,
+};
 
 use crate::{
-    expr::Expr,
+    expr::{Expr, Stmt},
     scanning::{Token, TokenKind},
 };
 
-pub struct Interpreter {}
+#[derive(Debug, Default)]
+pub struct Interpreter {
+    environment: Environment,
+}
+
+#[derive(Debug, Default)]
+struct Environment {
+    values: HashMap<String, Value>,
+}
+
+impl Environment {
+    pub fn define(&mut self, name: String, value: Value) {
+        self.values.insert(name, value);
+    }
+
+    pub fn assign(&mut self, name: String, value: Value) -> bool {
+        if let Occupied(mut e) = self.values.entry(name) {
+            e.insert(value);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn get(&self, name: &String) -> Result<Value, InterpretError> {
+        self.values
+            .get(name)
+            .cloned()
+            .ok_or(InterpretError(format!("undefined variable {name}")))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -27,24 +60,35 @@ impl Display for Value {
 }
 
 #[derive(Debug)]
-pub struct InterpretError {
-    message: String,
-}
-impl InterpretError {
-    fn new(message: String) -> Self {
-        Self { message }
-    }
-}
+pub struct InterpretError(String);
 
 impl Display for InterpretError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Interpret error: {}", self.message)
+        let Self(message) = self;
+        write!(f, "Interpret error: {message}")
     }
 }
 
 impl Interpreter {
-    pub fn interpret(&mut self, expr: &Expr) -> Result<Value, InterpretError> {
-        self.evaluate(expr)
+    pub fn interpret(&mut self, stmts: &[Stmt]) -> Result<(), InterpretError> {
+        for s in stmts {
+            self.execute(s)?;
+        }
+        Ok(())
+    }
+
+    fn execute(&mut self, stmt: &Stmt) -> Result<(), InterpretError> {
+        match stmt {
+            Stmt::Print(p) => Ok(println!("{}", self.evaluate(p)?)),
+            Stmt::Expression(s) => self.evaluate(s).map(drop),
+            Stmt::Var(n, e) => {
+                let value = e
+                    .as_ref()
+                    .map_or(Ok(Value::Nil), |expr| self.evaluate(expr))?;
+                self.environment.define(n.clone(), value);
+                Ok(())
+            }
+        }
     }
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Value, InterpretError> {
@@ -56,6 +100,15 @@ impl Interpreter {
             Expr::LiteralString(s) => Ok(Value::String(s.clone())),
             Expr::LiteralNil => Ok(Value::Nil),
             Expr::Unary { right, op } => self.unary(right, op),
+            Expr::Identifier(s) => self.environment.get(s).or(Ok(Value::Nil)),
+            Expr::Assignment(n, e) => {
+                let value = self.evaluate(e)?;
+                if self.environment.assign(n.to_owned(), value.clone()) {
+                    Ok(value)
+                } else {
+                    Err(InterpretError(format!("undefined variable {n}")))
+                }
+            }
         }
     }
 
@@ -84,7 +137,7 @@ impl Interpreter {
             (TokenKind::EqualEqual, l, r) => Ok(Value::Boolean(Self::is_equal(l, r))),
             (TokenKind::BangEqual, l, r) => Ok(Value::Boolean(!Self::is_equal(l, r))),
 
-            _ => Err(InterpretError::new(format!(
+            _ => Err(InterpretError(format!(
                 "invalid binary operation {left_value} '{op}' {right_value}"
             ))),
         }
@@ -97,7 +150,7 @@ impl Interpreter {
             (TokenKind::Minus, Value::Number(n)) => Ok(Value::Number(-n)),
             (TokenKind::Bang, v) => Ok(Self::is_truthy(v)),
 
-            _ => Err(InterpretError::new(format!(
+            _ => Err(InterpretError(format!(
                 "invalid unary operation '{op}' {right_value}"
             ))),
         }
@@ -119,36 +172,5 @@ impl Interpreter {
             (Value::String(l), Value::String(r)) => l == r,
             _ => false,
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::{parser::Parser, scanning::Scanner};
-
-    use super::{Interpreter, Value};
-
-    fn parse(source: &str) -> Option<Value> {
-        let mut scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens();
-        let mut parser = Parser::new(tokens);
-
-        let expr = parser.parse()?;
-
-        let mut interpreter = Interpreter {};
-        interpreter.interpret(&expr).ok()
-    }
-
-    #[test]
-    fn valid_maths() {
-        assert_eq!(parse("(6 / 3) - 1").unwrap(), Value::Number(1.0));
-    }
-    
-    #[test]
-    fn valid_strings() {
-        assert_eq!(
-            parse("\"A\" + \"b\"").unwrap(),
-            Value::String("Ab".to_owned())
-        );
     }
 }
