@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub struct Interpreter<'a> {
-    environment: Environment,
+    environment: Box<Environment>,
     stdout: &'a mut dyn Write,
 }
 
@@ -43,13 +43,6 @@ impl Environment {
             enclosing.get(name)
         } else {
             Err(InterpretError(format!("undefined variable {name}")))
-        }
-    }
-
-    pub fn new(e: Self) -> Self {
-        Self {
-            values: HashMap::default(),
-            enclosing: Some(Box::new(e)),
         }
     }
 }
@@ -86,7 +79,7 @@ impl Display for InterpretError {
 impl<'a> Interpreter<'a> {
     pub fn new(out: &'a mut dyn Write) -> Interpreter<'_> {
         Self {
-            environment: Environment::default(),
+            environment: Box::default(),
             stdout: out,
         }
     }
@@ -104,10 +97,16 @@ impl<'a> Interpreter<'a> {
             Stmt::Expression(s) => self.evaluate(s).map(drop),
             Stmt::Var(name, e) => self.execute_declare(e, name),
             Stmt::Block(statements) => self.execute_block(statements),
-            Stmt::If(condition, then_stmt, else_stmt) => {
-                self.execute_if(condition, then_stmt, else_stmt.as_deref())
-            }
+            Stmt::If(c, t, e) => self.execute_if(c, t, e.as_deref()),
+            Stmt::While(c, b) => self.execute_while(c, b),
         }
+    }
+
+    fn execute_while(&mut self, condition: &Expr, body: &Stmt) -> Result<(), InterpretError> {
+        while Self::is_truthy(&self.evaluate(condition)?) {
+            self.execute(body)?;
+        }
+        Ok(())
     }
 
     fn execute_if(
@@ -144,18 +143,19 @@ impl<'a> Interpreter<'a> {
     }
 
     fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), InterpretError> {
-        let new = Environment::new(self.environment.clone());
-        let previous = std::mem::replace(&mut self.environment, new);
+        let enclosed = std::mem::take(&mut self.environment);
+        self.environment.enclosing = Some(enclosed);
 
+        let mut result = Ok(());
         for s in statements {
             if let Err(e) = self.execute(s) {
-                self.environment = previous;
-                return Err(e);
+                result = Err(e);
+                break;
             }
         }
 
-        self.environment = previous;
-        Ok(())
+        self.environment = self.environment.enclosing.take().unwrap();
+        result
     }
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Value, InterpretError> {

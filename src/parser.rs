@@ -73,6 +73,8 @@ impl Parser {
     fn statement(&mut self) -> Result<Stmt, ParseError> {
         if self.match_tokens(&[TokenKind::If]) {
             self.if_statement()
+        } else if self.match_tokens(&[TokenKind::While]) {
+            self.while_statement()
         } else if self.match_tokens(&[TokenKind::Print]) {
             self.print_statement()
         } else if self.match_tokens(&[TokenKind::LeftBrace]) {
@@ -80,6 +82,16 @@ impl Parser {
         } else {
             self.expression_statement()
         }
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(&TokenKind::LeftParen, "expect '(' after 'while'")?;
+        let condition = self.expression()?;
+        self.consume(&TokenKind::RightParen, "expect ')' after while condition")?;
+
+        let body = Box::new(self.statement()?);
+
+        Ok(Stmt::While(condition, body))
     }
 
     fn if_statement(&mut self) -> Result<Stmt, ParseError> {

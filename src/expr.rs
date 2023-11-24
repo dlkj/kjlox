@@ -7,6 +7,7 @@ pub enum Stmt {
     Var(String, Option<Expr>),
     Block(Vec<Stmt>),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
+    While(Expr, Box<Stmt>),
 }
 
 impl std::fmt::Display for Stmt {
@@ -27,10 +28,13 @@ impl std::fmt::Display for Stmt {
             }
             Self::If(condition, then_stmt, else_stmt) => {
                 if let Some(else_stmt) = else_stmt {
-                    writeln!(f, "if {condition} then {then_stmt} else {else_stmt}")
+                    writeln!(f, "if ({condition}) {then_stmt} else {else_stmt}")
                 } else {
-                    writeln!(f, "if {condition} then {then_stmt}")
+                    writeln!(f, "if ({condition}) {then_stmt}")
                 }
+            }
+            Self::While(condition, body) => {
+                writeln!(f, "while ({condition}) {body}")
             }
         }
     }

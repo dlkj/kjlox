@@ -151,6 +151,8 @@ after
         run_test(
             "./examples/assignment.lox",
             r"2
+3
+3
 ",
         )
     }
@@ -173,6 +175,9 @@ false
         run_test(
             "./examples/control-flow.lox",
             r"a
+0
+1
+2
 ",
         )
     }
