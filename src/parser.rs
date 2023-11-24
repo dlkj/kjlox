@@ -71,13 +71,31 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Stmt, ParseError> {
-        if self.match_tokens(&[TokenKind::Print]) {
+        if self.match_tokens(&[TokenKind::If]) {
+            self.if_statement()
+        } else if self.match_tokens(&[TokenKind::Print]) {
             self.print_statement()
         } else if self.match_tokens(&[TokenKind::LeftBrace]) {
             Ok(Stmt::Block(self.block()?))
         } else {
             self.expression_statement()
         }
+    }
+
+    fn if_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(&TokenKind::LeftParen, "expect '(' after 'if'")?;
+        let condition = self.expression()?;
+        self.consume(&TokenKind::RightParen, "expect ')' after if condition")?;
+
+        let then_branch = Box::new(self.statement()?);
+
+        let else_branch = if self.match_tokens(&[TokenKind::Else]) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+
+        Ok(Stmt::If(condition, then_branch, else_branch))
     }
 
     fn print_statement(&mut self) -> Result<Stmt, ParseError> {
@@ -108,7 +126,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr, ParseError> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
 
         if !self.match_tokens(&[TokenKind::Equal]) {
             return Ok(expr);
@@ -122,6 +140,34 @@ impl Parser {
                 format!("invalid assignment target {expr}"),
             ))
         }
+    }
+
+    fn or(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.and()?;
+        while self.match_tokens(&[TokenKind::Or]) {
+            let op = self.previous();
+            let right = self.and()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                right: Box::new(right),
+                op,
+            }
+        }
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.equality()?;
+        while self.match_tokens(&[TokenKind::And]) {
+            let op = self.previous();
+            let right = self.equality()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                right: Box::new(right),
+                op,
+            }
+        }
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expr, ParseError> {

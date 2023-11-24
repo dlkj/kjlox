@@ -162,6 +162,17 @@ after
             r"3
 2
 ab
+true
+false
+",
+        )
+    }
+
+    #[test]
+    fn control_flow() -> Result<(), crate::Error> {
+        run_test(
+            "./examples/control-flow.lox",
+            r"a
 ",
         )
     }

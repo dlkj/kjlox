@@ -100,35 +100,52 @@ impl<'a> Interpreter<'a> {
 
     fn execute(&mut self, stmt: &Stmt) -> Result<(), InterpretError> {
         match stmt {
-            Stmt::Print(p) => {
-                let result = self.evaluate(p)?;
-                match result {
-                    Value::String(s) => writeln!(self.stdout, "{s}").unwrap(),
-                    _ => writeln!(self.stdout, "{result}").unwrap(),
-                }
-
-                Ok(())
-            }
+            Stmt::Print(p) => self.execute_print(p),
             Stmt::Expression(s) => self.evaluate(s).map(drop),
-            Stmt::Var(name, e) => {
-                let value = e
-                    .as_ref()
-                    .map_or(Ok(Value::Nil), |expr| self.evaluate(expr))?;
-                self.environment.define(name.clone(), value);
-                Ok(())
-            }
-            Stmt::Block(statements) => {
-                self.execute_block(statements, Environment::new(self.environment.clone()))
+            Stmt::Var(name, e) => self.execute_declare(e, name),
+            Stmt::Block(statements) => self.execute_block(statements),
+            Stmt::If(condition, then_stmt, else_stmt) => {
+                self.execute_if(condition, then_stmt, else_stmt.as_deref())
             }
         }
     }
 
-    fn execute_block(
+    fn execute_if(
         &mut self,
-        statements: &[Stmt],
-        environment: Environment,
+        condition: &Expr,
+        then_stmt: &Stmt,
+        else_stmt: Option<&Stmt>,
     ) -> Result<(), InterpretError> {
-        let previous = std::mem::replace(&mut self.environment, environment);
+        if Self::is_truthy(&self.evaluate(condition)?) {
+            self.execute(then_stmt)
+        } else if let Some(else_stmt) = else_stmt {
+            self.execute(else_stmt)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn execute_print(&mut self, p: &Expr) -> Result<(), InterpretError> {
+        let result = self.evaluate(p)?;
+        match result {
+            Value::String(s) => writeln!(self.stdout, "{s}").unwrap(),
+            _ => writeln!(self.stdout, "{result}").unwrap(),
+        }
+
+        Ok(())
+    }
+
+    fn execute_declare(&mut self, e: &Option<Expr>, name: &str) -> Result<(), InterpretError> {
+        let value = e
+            .as_ref()
+            .map_or(Ok(Value::Nil), |expr| self.evaluate(expr))?;
+        self.environment.define(name.to_owned(), value);
+        Ok(())
+    }
+
+    fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), InterpretError> {
+        let new = Environment::new(self.environment.clone());
+        let previous = std::mem::replace(&mut self.environment, new);
 
         for s in statements {
             if let Err(e) = self.execute(s) {
@@ -159,6 +176,7 @@ impl<'a> Interpreter<'a> {
                     Err(InterpretError(format!("undefined variable {n}")))
                 }
             }
+            Expr::Logical { left, right, op } => self.logical(left, right, op),
         }
     }
 
@@ -198,7 +216,7 @@ impl<'a> Interpreter<'a> {
 
         match (&op.kind, &right_value) {
             (TokenKind::Minus, Value::Number(n)) => Ok(Value::Number(-n)),
-            (TokenKind::Bang, v) => Ok(Self::is_truthy(v)),
+            (TokenKind::Bang, v) => Ok(Value::Boolean(Self::is_truthy(v))),
 
             _ => Err(InterpretError(format!(
                 "invalid unary operation '{op}' {right_value}"
@@ -206,11 +224,32 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn is_truthy(v: &Value) -> Value {
+    fn logical(&mut self, left: &Expr, right: &Expr, op: &Token) -> Result<Value, InterpretError> {
+        let left = self.evaluate(left)?;
+        match op.kind {
+            TokenKind::Or => {
+                if Self::is_truthy(&left) {
+                    Ok(left)
+                } else {
+                    self.evaluate(right)
+                }
+            }
+            TokenKind::And => {
+                if Self::is_truthy(&left) {
+                    self.evaluate(right)
+                } else {
+                    Ok(left)
+                }
+            }
+            _ => Err(InterpretError(format!("invalid logical operation '{op}'"))),
+        }
+    }
+
+    fn is_truthy(v: &Value) -> bool {
         match v {
-            Value::Nil => Value::Boolean(false),
-            Value::Boolean(b) => Value::Boolean(*b),
-            _ => Value::Boolean(true),
+            Value::Nil => false,
+            Value::Boolean(b) => *b,
+            _ => true,
         }
     }
 

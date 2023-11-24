@@ -6,6 +6,7 @@ pub enum Stmt {
     Expression(Expr),
     Var(String, Option<Expr>),
     Block(Vec<Stmt>),
+    If(Expr, Box<Stmt>, Option<Box<Stmt>>),
 }
 
 impl std::fmt::Display for Stmt {
@@ -24,6 +25,13 @@ impl std::fmt::Display for Stmt {
                 }
                 write!(f, "}} END BLOCK")
             }
+            Self::If(condition, then_stmt, else_stmt) => {
+                if let Some(else_stmt) = else_stmt {
+                    writeln!(f, "if {condition} then {then_stmt} else {else_stmt}")
+                } else {
+                    writeln!(f, "if {condition} then {then_stmt}")
+                }
+            }
         }
     }
 }
@@ -31,6 +39,11 @@ impl std::fmt::Display for Stmt {
 #[derive(Debug, PartialEq)]
 pub enum Expr {
     Binary {
+        left: Box<Expr>,
+        right: Box<Expr>,
+        op: Token,
+    },
+    Logical {
         left: Box<Expr>,
         right: Box<Expr>,
         op: Token,
@@ -51,7 +64,9 @@ pub enum Expr {
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Binary { left, right, op } => write!(f, "({op} {} {})", &left, &right),
+            Self::Logical { left, right, op } | Self::Binary { left, right, op } => {
+                write!(f, "({op} {} {})", &left, &right)
+            }
             Self::Grouping(e) => write!(f, "(group {})", &e),
             Self::LiteralString(value) => write!(f, "\"{value}\""),
             Self::LiteralNumber(value) => write!(f, "{value}"),
