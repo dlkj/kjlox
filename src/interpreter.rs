@@ -1,6 +1,7 @@
 use std::{
     collections::{hash_map::Entry::Occupied, HashMap},
     fmt::Display,
+    io::Write,
 };
 
 use crate::{
@@ -8,9 +9,9 @@ use crate::{
     scanning::{Token, TokenKind},
 };
 
-#[derive(Debug, Default, Clone)]
-pub struct Interpreter {
+pub struct Interpreter<'a> {
     environment: Environment,
+    stdout: &'a mut dyn Write,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -82,7 +83,14 @@ impl Display for InterpretError {
     }
 }
 
-impl Interpreter {
+impl<'a> Interpreter<'a> {
+    pub fn new(out: &'a mut dyn Write) -> Interpreter<'_> {
+        Self {
+            environment: Environment::default(),
+            stdout: out,
+        }
+    }
+
     pub fn interpret(&mut self, stmts: &[Stmt]) -> Result<(), InterpretError> {
         for s in stmts {
             self.execute(s)?;
@@ -92,7 +100,15 @@ impl Interpreter {
 
     fn execute(&mut self, stmt: &Stmt) -> Result<(), InterpretError> {
         match stmt {
-            Stmt::Print(p) => Ok(println!("{}", self.evaluate(p)?)),
+            Stmt::Print(p) => {
+                let result = self.evaluate(p)?;
+                match result {
+                    Value::String(s) => writeln!(self.stdout, "{s}").unwrap(),
+                    _ => writeln!(self.stdout, "{result}").unwrap(),
+                }
+
+                Ok(())
+            }
             Stmt::Expression(s) => self.evaluate(s).map(drop),
             Stmt::Var(name, e) => {
                 let value = e

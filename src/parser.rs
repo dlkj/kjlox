@@ -325,21 +325,21 @@ mod test {
     #[test]
     fn valid_group() {
         assert_eq!(
-            parse("(6 / 3) - 1")[0].to_string(),
-            String::from("(Minus (group (Slash 6 3)) 1)")
+            parse("(6 / 3) - 1;")[0].to_string(),
+            String::from("(Minus (group (Slash 6 3)) 1);")
         );
     }
 
     #[test]
     fn invalid_group() {
-        assert!(parse("(6 / 3 - 1").is_empty());
+        assert!(parse("(6 / 3 - 1;").is_empty());
     }
 
     #[test]
     fn strings() {
         assert_eq!(
-            parse("!(\"foo\" != \"bar\") + nil")[0].to_string(),
-            String::from("(Plus (Bang (group (BangEqual \"foo\" \"bar\"))) nil)")
+            parse("!(\"foo\" != \"bar\") + nil;")[0].to_string(),
+            String::from("(Plus (Bang (group (BangEqual \"foo\" \"bar\"))) nil);")
         );
     }
 }

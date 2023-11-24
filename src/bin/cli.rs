@@ -1,4 +1,4 @@
-use std::{env, process::ExitCode};
+use std::{env, io::stdout, process::ExitCode};
 
 use kjlox::{run_file, run_prompt};
 
@@ -13,7 +13,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        (Some(path), None) => match run_file(&path) {
+        (Some(path), None) => match run_file(&mut stdout(), &path) {
             Ok(_) => ExitCode::SUCCESS,
             Err(e) => {
                 println!("{e}");

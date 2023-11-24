@@ -59,17 +59,19 @@ impl From<std::io::Error> for Error {
     }
 }
 
-pub fn run_file(path: &str) -> Result<(), Error> {
+pub fn run_file(out: &mut dyn Write, path: &str) -> Result<(), Error> {
     let mut file = File::open(path)?;
     let mut file_content = String::new();
     file.read_to_string(&mut file_content)?;
-    run(&mut Interpreter::default(), &file_content);
+    run(&mut Interpreter::new(out), &file_content);
     Ok(())
 }
 
 pub fn run_prompt() -> Result<(), Error> {
     let stdin = io::stdin();
-    let mut interpreter = Interpreter::default();
+    let mut stdout = io::stdout();
+    let mut interpreter = Interpreter::new(&mut stdout);
+
     loop {
         print!("> ");
         // flush required to ensure prompt is show immediately
@@ -104,5 +106,76 @@ fn run(interpreter: &mut Interpreter, source: &str) {
         Err(e) => {
             eprintln!("{e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{
+        io::{Cursor, Read},
+        path::Path,
+    };
+
+    use crate::run_file;
+
+    #[test]
+    fn scope() -> Result<(), crate::Error> {
+        run_test(
+            "./examples/scope.lox",
+            r"inner a
+outer b
+global c
+outer a
+outer b
+global c
+global a
+global b
+global c
+",
+        )
+    }
+
+    #[test]
+    fn declaration() -> Result<(), crate::Error> {
+        run_test(
+            "./examples/declaration.lox",
+            r"before
+after
+3
+",
+        )
+    }
+
+    #[test]
+    fn assignment() -> Result<(), crate::Error> {
+        run_test(
+            "./examples/assignment.lox",
+            r"2
+",
+        )
+    }
+
+    #[test]
+    fn expressions() -> Result<(), crate::Error> {
+        run_test(
+            "./examples/expressions.lox",
+            r"3
+2
+ab
+",
+        )
+    }
+
+    fn run_test(path: &str, expected: &str) -> Result<(), crate::Error> {
+        let mut out = Cursor::new(vec![]);
+        run_file(&mut out, Path::new(path).to_str().unwrap())?;
+
+        let mut output = String::new();
+        out.set_position(0);
+        out.read_to_string(&mut output)?;
+
+        assert_eq!(output, expected);
+
+        Ok(())
     }
 }
