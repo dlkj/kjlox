@@ -16,7 +16,11 @@ pub struct ParseError(Token, String);
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(token, message) = self;
-        write!(f, "Parse error: L{} {} - {message}", token.line, token.kind)
+        write!(
+            f,
+            "line {} - parse error: {} - {message}",
+            token.line, token.kind
+        )
     }
 }
 
@@ -27,20 +31,29 @@ impl Parser {
         Self { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> Vec<Stmt> {
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut statements = vec![];
+
+        let mut error = None;
 
         while !self.is_at_end() {
             match self.declaration() {
                 Ok(s) => statements.push(s),
                 Err(e) => {
                     eprintln!("{e}");
+                    if error.is_none() {
+                        error = Some(e);
+                    }
                     self.synchronize();
                 }
             }
         }
 
-        statements
+        if let Some(error) = error {
+            Err(error)
+        } else {
+            Ok(statements)
+        }
     }
 
     fn declaration(&mut self) -> Result<Stmt, ParseError> {
@@ -75,6 +88,8 @@ impl Parser {
             self.if_statement()
         } else if self.match_tokens(&[TokenKind::While]) {
             self.while_statement()
+        } else if self.match_tokens(&[TokenKind::For]) {
+            self.for_statement()
         } else if self.match_tokens(&[TokenKind::Print]) {
             self.print_statement()
         } else if self.match_tokens(&[TokenKind::LeftBrace]) {
@@ -92,6 +107,49 @@ impl Parser {
         let body = Box::new(self.statement()?);
 
         Ok(Stmt::While(condition, body))
+    }
+
+    fn for_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(&TokenKind::LeftParen, "expect '(' after 'for'")?;
+
+        let init = if self.match_tokens(&[TokenKind::Semicolon]) {
+            None
+        } else if self.match_tokens(&[TokenKind::Var]) {
+            Some(self.var_declaration()?)
+        } else {
+            Some(self.expression_statement()?)
+        };
+
+        let condition = if self.match_tokens(&[TokenKind::Semicolon]) {
+            None
+        } else {
+            Some(self.expression()?)
+        };
+
+        self.consume(&TokenKind::Semicolon, "expect ';' after for condition")?;
+
+        let update = if self.match_tokens(&[TokenKind::Semicolon]) {
+            None
+        } else {
+            Some(self.expression()?)
+        };
+
+        self.consume(&TokenKind::RightParen, "expect ')' after for clause")?;
+
+        let body = self.statement()?;
+
+        let while_stmt = Stmt::While(
+            condition.unwrap_or(Expr::LiteralBoolean(true)),
+            Box::new(match update {
+                Some(update) => Stmt::Block(vec![body, Stmt::Expression(update)]),
+                _ => body,
+            }),
+        );
+
+        Ok(match init {
+            Some(init) => Stmt::Block(vec![init, while_stmt]),
+            _ => while_stmt,
+        })
     }
 
     fn if_statement(&mut self) -> Result<Stmt, ParseError> {
@@ -372,7 +430,9 @@ impl Parser {
 mod test {
     use crate::{expr::Stmt, parser::Parser, scanning::Scanner};
 
-    fn parse(source: &str) -> Vec<Stmt> {
+    use super::ParseError;
+
+    fn parse(source: &str) -> Result<Vec<Stmt>, ParseError> {
         let mut scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens();
         let mut parser = Parser::new(tokens);
@@ -383,20 +443,20 @@ mod test {
     #[test]
     fn valid_group() {
         assert_eq!(
-            parse("(6 / 3) - 1;")[0].to_string(),
+            parse("(6 / 3) - 1;").unwrap()[0].to_string(),
             String::from("(Minus (group (Slash 6 3)) 1);")
         );
     }
 
     #[test]
     fn invalid_group() {
-        assert!(parse("(6 / 3 - 1;").is_empty());
+        assert!(parse("(6 / 3 - 1;").is_err());
     }
 
     #[test]
     fn strings() {
         assert_eq!(
-            parse("!(\"foo\" != \"bar\") + nil;")[0].to_string(),
+            parse("!(\"foo\" != \"bar\") + nil;").unwrap()[0].to_string(),
             String::from("(Plus (Bang (group (BangEqual \"foo\" \"bar\"))) nil);")
         );
     }

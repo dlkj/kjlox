@@ -95,11 +95,14 @@ fn run(interpreter: &mut Interpreter, source: &str) {
 
     let stmts = parser.parse();
 
-    if stmts.is_empty() {
+    let value = if let Ok(stmts) = stmts {
+        if stmts.is_empty() {
+            return;
+        }
+        interpreter.interpret(&stmts)
+    } else {
         return;
     };
-
-    let value = interpreter.interpret(&stmts);
 
     match value {
         Ok(v) => v,
@@ -178,6 +181,34 @@ false
 0
 1
 2
+",
+        )
+    }
+
+    #[test]
+    fn fibonacci() -> Result<(), crate::Error> {
+        run_test(
+            "./examples/fibonacci.lox",
+            r"0
+1
+1
+2
+3
+5
+8
+13
+21
+34
+55
+89
+144
+233
+377
+610
+987
+1597
+2584
+4181
 ",
         )
     }
