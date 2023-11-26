@@ -63,6 +63,7 @@ pub enum Expr {
     },
     Identifier(String),
     Assignment(String, Box<Expr>),
+    Call(Box<Expr>, Token, Vec<Expr>),
 }
 
 impl std::fmt::Display for Expr {
@@ -79,6 +80,14 @@ impl std::fmt::Display for Expr {
             Self::LiteralNil => write!(f, "nil"),
             Self::Identifier(s) => write!(f, "{s}"),
             Self::Assignment(s, v) => write!(f, "{s} = {v}"),
+            Self::Call(e, _, a) => write!(
+                f,
+                "{e}({})",
+                a.iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }

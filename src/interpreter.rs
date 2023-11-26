@@ -2,17 +2,14 @@ use std::{
     collections::{hash_map::Entry::Occupied, HashMap},
     fmt::Display,
     io::Write,
+    rc::Rc,
+    time::SystemTime,
 };
 
 use crate::{
     expr::{Expr, Stmt},
     scanning::{Token, TokenKind},
 };
-
-pub struct Interpreter<'a> {
-    environment: Box<Environment>,
-    stdout: &'a mut dyn Write,
-}
 
 #[derive(Debug, Default, Clone)]
 struct Environment {
@@ -47,12 +44,56 @@ impl Environment {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
+pub enum Callable {
+    Function,
+    NativeFunction(usize, Rc<dyn Fn() -> Result<Value, InterpretError>>),
+}
+
+impl std::fmt::Debug for Callable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Function => todo!(),
+            Self::NativeFunction(arg0, _) => f
+                .debug_tuple("NativeFunction")
+                .field(arg0)
+                .field(&"<function pointer>")
+                .finish(),
+        }
+    }
+}
+impl Callable {
+    fn call(&self, _: &mut Interpreter<'_>, _: &[Value]) -> Result<Value, InterpretError> {
+        match self {
+            Self::Function => todo!(),
+            Self::NativeFunction(_, f) => f(),
+        }
+    }
+
+    fn arity(&self) -> usize {
+        match self {
+            Self::Function => todo!(),
+            Self::NativeFunction(n, _) => *n,
+        }
+    }
+}
+
+impl Display for Callable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Function => todo!(),
+            Self::NativeFunction(_, _) => write!(f, "<native fn>"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Value {
     Nil,
     Boolean(bool),
     Number(f64),
     String(String),
+    Callable(Callable),
 }
 
 impl Display for Value {
@@ -62,6 +103,7 @@ impl Display for Value {
             Self::Boolean(v) => write!(f, "{v}"),
             Self::Number(v) => write!(f, "{v}"),
             Self::String(v) => write!(f, "\"{v}\""),
+            Self::Callable(v) => write!(f, "{v}"),
         }
     }
 }
@@ -76,10 +118,33 @@ impl Display for InterpretError {
     }
 }
 
+pub struct Interpreter<'a> {
+    environment: Box<Environment>,
+    stdout: &'a mut dyn Write,
+}
+
 impl<'a> Interpreter<'a> {
     pub fn new(out: &'a mut dyn Write) -> Interpreter<'_> {
+        let mut environment = Environment::default();
+
+        environment.define(
+            "clock2".to_owned(),
+            Value::Callable(Callable::NativeFunction(
+                0,
+                Rc::new(|| {
+                    #[allow(clippy::cast_precision_loss)]
+                    Ok(Value::Number(
+                        SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs() as f64,
+                    ))
+                }),
+            )),
+        );
+
         Self {
-            environment: Box::default(),
+            environment: Box::new(environment),
             stdout: out,
         }
     }
@@ -177,6 +242,7 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Expr::Logical { left, right, op } => self.logical(left, right, op),
+            Expr::Call(callee, token, args) => self.call(callee, token, args),
         }
     }
 
@@ -242,6 +308,38 @@ impl<'a> Interpreter<'a> {
                 }
             }
             _ => Err(InterpretError(format!("invalid logical operation '{op}'"))),
+        }
+    }
+
+    fn call(
+        &mut self,
+        callee: &Expr,
+        token: &Token,
+        args: &[Expr],
+    ) -> Result<Value, InterpretError> {
+        let callee = self.evaluate(callee)?;
+
+        let evaluated_args = args
+            .iter()
+            .map(|e| self.evaluate(e))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        match callee {
+            Value::Callable(c) => {
+                if evaluated_args.len() != c.arity() {
+                    return Err(InterpretError(format!(
+                        "line {} - expected {} arguments but got {}",
+                        token.line,
+                        c.arity(),
+                        evaluated_args.len()
+                    )));
+                }
+                c.call(self, &evaluated_args)
+            }
+            _ => Err(InterpretError(format!(
+                "line {} - can only call functions and classes",
+                token.line
+            ))),
         }
     }
 

@@ -318,7 +318,40 @@ impl Parser {
             return expr;
         }
 
-        self.primary()
+        self.call()
+    }
+
+    fn call(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.primary()?;
+
+        loop {
+            if self.match_tokens(&[TokenKind::LeftParen]) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Result<Expr, ParseError> {
+        let mut args = vec![];
+        if !self.check(&TokenKind::RightParen) {
+            loop {
+                if args.len() >= 255 {
+                    return Err(ParseError(
+                        self.peek(),
+                        "Can't have more than 255 arguments.".to_owned(),
+                    ));
+                }
+                args.push(self.expression()?);
+                if !self.match_tokens(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+        }
+        let paren = self.consume(&TokenKind::RightParen, "expect ')' after call args")?;
+        Ok(Expr::Call(Box::new(callee), paren, args))
     }
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
@@ -365,10 +398,9 @@ impl Parser {
         }
     }
 
-    fn consume(&mut self, value: &TokenKind, msg: &str) -> Result<(), ParseError> {
+    fn consume(&mut self, value: &TokenKind, msg: &str) -> Result<Token, ParseError> {
         if self.check(value) {
-            self.advance();
-            Ok(())
+            Ok(self.advance())
         } else {
             Err(ParseError(self.peek(), msg.to_owned()))
         }
