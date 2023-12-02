@@ -57,11 +57,40 @@ impl Parser {
     }
 
     fn declaration(&mut self) -> Result<Stmt, ParseError> {
-        if self.match_tokens(&[TokenKind::Var]) {
+        if self.match_tokens(&[TokenKind::Fun]) {
+            self.function()
+        } else if self.match_tokens(&[TokenKind::Var]) {
             self.var_declaration()
         } else {
             self.statement()
         }
+    }
+
+    fn function(&mut self) -> Result<Stmt, ParseError> {
+        let name = self.consume_identifier("Expect function name")?;
+        self.consume(&TokenKind::LeftParen, "Expect '(' after function name")?;
+
+        let mut params = vec![];
+        if !self.check(&TokenKind::RightParen) {
+            loop {
+                if params.len() >= 255 {
+                    return Err(ParseError(
+                        self.peek(),
+                        "Can't have more than 255 parameters.".to_owned(),
+                    ));
+                }
+                params.push(self.consume_identifier("Expect parameter name")?);
+                if !self.match_tokens(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(&TokenKind::RightParen, "Expect ')' after function params")?;
+
+        self.consume(&TokenKind::LeftBrace, "Expect '{' before function body")?;
+        let body = self.block()?;
+        Ok(Stmt::Function(name, params, body))
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, ParseError> {

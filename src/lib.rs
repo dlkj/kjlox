@@ -213,6 +213,17 @@ false
         )
     }
 
+    #[test]
+    fn function_count() -> Result<(), crate::Error> {
+        run_test(
+            "./examples/function-count.lox",
+            r"1
+2
+3
+",
+        )
+    }
+
     fn run_test(path: &str, expected: &str) -> Result<(), crate::Error> {
         let mut out = Cursor::new(vec![]);
         run_file(&mut out, Path::new(path).to_str().unwrap())?;

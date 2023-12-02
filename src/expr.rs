@@ -1,6 +1,6 @@
 use crate::scanning::Token;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Stmt {
     Print(Expr),
     Expression(Expr),
@@ -8,6 +8,7 @@ pub enum Stmt {
     Block(Vec<Stmt>),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
+    Function(String, Vec<String>, Vec<Stmt>),
 }
 
 impl std::fmt::Display for Stmt {
@@ -28,19 +29,22 @@ impl std::fmt::Display for Stmt {
             }
             Self::If(condition, then_stmt, else_stmt) => {
                 if let Some(else_stmt) = else_stmt {
-                    writeln!(f, "if ({condition}) {then_stmt} else {else_stmt}")
+                    write!(f, "if ({condition}) {then_stmt} else {else_stmt}")
                 } else {
-                    writeln!(f, "if ({condition}) {then_stmt}")
+                    write!(f, "if ({condition}) {then_stmt}")
                 }
             }
             Self::While(condition, body) => {
-                writeln!(f, "while ({condition}) {body}")
+                write!(f, "while ({condition}) {body}")
+            }
+            Self::Function(name, parms, body) => {
+                write!(f, "fn {name}({}) {:?}", parms.join(", "), body)
             }
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     Binary {
         left: Box<Expr>,

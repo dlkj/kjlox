@@ -46,14 +46,16 @@ impl Environment {
 
 #[derive(Clone)]
 pub enum Callable {
-    Function,
+    Function(Vec<String>, Vec<Stmt>),
     NativeFunction(usize, Rc<dyn Fn() -> Result<Value, InterpretError>>),
 }
 
 impl std::fmt::Debug for Callable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Function => todo!(),
+            Self::Function(arg0, arg1) => {
+                f.debug_tuple("Function").field(arg0).field(arg1).finish()
+            }
             Self::NativeFunction(arg0, _) => f
                 .debug_tuple("NativeFunction")
                 .field(arg0)
@@ -63,17 +65,29 @@ impl std::fmt::Debug for Callable {
     }
 }
 impl Callable {
-    fn call(&self, _: &mut Interpreter<'_>, _: &[Value]) -> Result<Value, InterpretError> {
+    fn call(
+        &self,
+        interpreter: &mut Interpreter<'_>,
+        args: &[Value],
+    ) -> Result<Value, InterpretError> {
         match self {
-            Self::Function => todo!(),
             Self::NativeFunction(_, f) => f(),
+            Self::Function(params, s) => {
+                let mut env = Environment::default();
+                for (param, arg) in params.iter().zip(args) {
+                    env.define(param.to_owned(), arg.clone());
+                }
+
+                interpreter.execute_block(env, s)?;
+                Ok(Value::Nil)
+            }
         }
     }
 
     fn arity(&self) -> usize {
         match self {
-            Self::Function => todo!(),
             Self::NativeFunction(n, _) => *n,
+            Self::Function(param, _) => param.len(),
         }
     }
 }
@@ -81,7 +95,7 @@ impl Callable {
 impl Display for Callable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Function => todo!(),
+            Self::Function(_, _) => write!(f, "function"),
             Self::NativeFunction(_, _) => write!(f, "<native fn>"),
         }
     }
@@ -161,10 +175,21 @@ impl<'a> Interpreter<'a> {
             Stmt::Print(p) => self.execute_print(p),
             Stmt::Expression(s) => self.evaluate(s).map(drop),
             Stmt::Var(name, e) => self.execute_declare(e, name),
-            Stmt::Block(statements) => self.execute_block(statements),
+            Stmt::Block(statements) => self.execute_block(Environment::default(), statements),
             Stmt::If(c, t, e) => self.execute_if(c, t, e.as_deref()),
             Stmt::While(c, b) => self.execute_while(c, b),
+            Stmt::Function(n, p, b) => {
+                self.execute_function(n, p, b);
+                Ok(())
+            }
         }
+    }
+
+    fn execute_function(&mut self, name: &str, params: &[String], body: &[Stmt]) {
+        self.environment.define(
+            name.to_owned(),
+            Value::Callable(Callable::Function(params.to_vec(), body.to_vec())),
+        );
     }
 
     fn execute_while(&mut self, condition: &Expr, body: &Stmt) -> Result<(), InterpretError> {
@@ -207,8 +232,12 @@ impl<'a> Interpreter<'a> {
         Ok(())
     }
 
-    fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), InterpretError> {
-        let enclosed = std::mem::take(&mut self.environment);
+    fn execute_block(
+        &mut self,
+        environment: Environment,
+        statements: &[Stmt],
+    ) -> Result<(), InterpretError> {
+        let enclosed = std::mem::replace(&mut self.environment, Box::new(environment));
         self.environment.enclosing = Some(enclosed);
 
         let mut result = Ok(());
