@@ -107,7 +107,7 @@ fn run(interpreter: &mut Interpreter, source: &str) {
     match value {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("{e}");
+            panic!("{e}");
         }
     }
 }
@@ -218,6 +218,9 @@ false
         run_test(
             "./examples/function-count.lox",
             r"1
+2
+3
+1
 2
 3
 ",

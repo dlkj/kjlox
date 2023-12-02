@@ -9,6 +9,7 @@ pub enum Stmt {
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
     Function(String, Vec<String>, Vec<Stmt>),
+    Return(Expr),
 }
 
 impl std::fmt::Display for Stmt {
@@ -37,8 +38,11 @@ impl std::fmt::Display for Stmt {
             Self::While(condition, body) => {
                 write!(f, "while ({condition}) {body}")
             }
-            Self::Function(name, parms, body) => {
-                write!(f, "fn {name}({}) {:?}", parms.join(", "), body)
+            Self::Function(name, prams, body) => {
+                write!(f, "fn {name}({}) {:?}", prams.join(", "), body)
+            }
+            Self::Return(expr) => {
+                write!(f, "return {expr}")
             }
         }
     }

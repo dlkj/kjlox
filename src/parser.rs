@@ -121,6 +121,8 @@ impl Parser {
             self.for_statement()
         } else if self.match_tokens(&[TokenKind::Print]) {
             self.print_statement()
+        } else if self.match_tokens(&[TokenKind::Return]) {
+            self.return_statement()
         } else if self.match_tokens(&[TokenKind::LeftBrace]) {
             Ok(Stmt::Block(self.block()?))
         } else {
@@ -195,6 +197,12 @@ impl Parser {
         };
 
         Ok(Stmt::If(condition, then_branch, else_branch))
+    }
+
+    fn return_statement(&mut self) -> Result<Stmt, ParseError> {
+        let value = self.expression()?;
+        self.consume(&TokenKind::Semicolon, "expect ';' after return")?;
+        Ok(Stmt::Return(value))
     }
 
     fn print_statement(&mut self) -> Result<Stmt, ParseError> {

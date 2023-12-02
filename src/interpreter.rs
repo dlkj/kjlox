@@ -39,7 +39,9 @@ impl Environment {
         } else if let Some(enclosing) = self.enclosing.as_ref() {
             enclosing.get(name)
         } else {
-            Err(InterpretError(format!("undefined variable {name}")))
+            Err(InterpretError::Execution(format!(
+                "undefined variable {name}"
+            )))
         }
     }
 }
@@ -123,12 +125,17 @@ impl Display for Value {
 }
 
 #[derive(Debug)]
-pub struct InterpretError(String);
+pub enum InterpretError {
+    Execution(String),
+    Return(Value),
+}
 
 impl Display for InterpretError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self(message) = self;
-        write!(f, "Interpret error: {message}")
+        match self {
+            Self::Execution(m) => write!(f, "Interpret execution error: {m}"),
+            Self::Return(v) => write!(f, "Interpret return: {v}"),
+        }
     }
 }
 
@@ -182,6 +189,7 @@ impl<'a> Interpreter<'a> {
                 self.execute_function(n, p, b);
                 Ok(())
             }
+            Stmt::Return(e) => self.execute_return(e),
         }
     }
 
@@ -222,6 +230,11 @@ impl<'a> Interpreter<'a> {
         }
 
         Ok(())
+    }
+
+    fn execute_return(&mut self, p: &Expr) -> Result<(), InterpretError> {
+        let result = self.evaluate(p)?;
+        Err(InterpretError::Return(result))
     }
 
     fn execute_declare(&mut self, e: &Option<Expr>, name: &str) -> Result<(), InterpretError> {
@@ -267,7 +280,7 @@ impl<'a> Interpreter<'a> {
                 if self.environment.assign(n.to_owned(), value.clone()) {
                     Ok(value)
                 } else {
-                    Err(InterpretError(format!("undefined variable {n}")))
+                    Err(InterpretError::Execution(format!("undefined variable {n}")))
                 }
             }
             Expr::Logical { left, right, op } => self.logical(left, right, op),
@@ -300,7 +313,7 @@ impl<'a> Interpreter<'a> {
             (TokenKind::EqualEqual, l, r) => Ok(Value::Boolean(Self::is_equal(l, r))),
             (TokenKind::BangEqual, l, r) => Ok(Value::Boolean(!Self::is_equal(l, r))),
 
-            _ => Err(InterpretError(format!(
+            _ => Err(InterpretError::Execution(format!(
                 "invalid binary operation {left_value} '{op}' {right_value}"
             ))),
         }
@@ -313,7 +326,7 @@ impl<'a> Interpreter<'a> {
             (TokenKind::Minus, Value::Number(n)) => Ok(Value::Number(-n)),
             (TokenKind::Bang, v) => Ok(Value::Boolean(Self::is_truthy(v))),
 
-            _ => Err(InterpretError(format!(
+            _ => Err(InterpretError::Execution(format!(
                 "invalid unary operation '{op}' {right_value}"
             ))),
         }
@@ -336,7 +349,9 @@ impl<'a> Interpreter<'a> {
                     Ok(left)
                 }
             }
-            _ => Err(InterpretError(format!("invalid logical operation '{op}'"))),
+            _ => Err(InterpretError::Execution(format!(
+                "invalid logical operation '{op}'"
+            ))),
         }
     }
 
@@ -356,16 +371,21 @@ impl<'a> Interpreter<'a> {
         match callee {
             Value::Callable(c) => {
                 if evaluated_args.len() != c.arity() {
-                    return Err(InterpretError(format!(
+                    return Err(InterpretError::Execution(format!(
                         "line {} - expected {} arguments but got {}",
                         token.line,
                         c.arity(),
                         evaluated_args.len()
                     )));
                 }
-                c.call(self, &evaluated_args)
+                let result = c.call(self, &evaluated_args);
+                if let Err(InterpretError::Return(v)) = result {
+                    Ok(v)
+                } else {
+                    result
+                }
             }
-            _ => Err(InterpretError(format!(
+            _ => Err(InterpretError::Execution(format!(
                 "line {} - can only call functions and classes",
                 token.line
             ))),
